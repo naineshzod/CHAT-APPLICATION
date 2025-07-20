@@ -1,0 +1,186 @@
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #messages-container {
+            scroll-behavior: smooth;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+
+    <div id="app-container" class="flex flex-col h-screen max-w-4xl mx-auto">
+
+        <!-- Login View -->
+        <div id="login-view" class="flex items-center justify-center h-full">
+            <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-gray-800 rounded-2xl shadow-lg">
+                <h2 class="text-3xl font-bold text-center text-gray-900 dark:text-white">Join Chat</h2>
+                <div>
+                    <label for="username-input" class="sr-only">Username</label>
+                    <input id="username-input" type="text" required class="w-full px-4 py-3 text-lg bg-gray-100 dark:bg-gray-700 border-2 border-transparent rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="Enter your username">
+                </div>
+                <button id="login-button" class="w-full px-4 py-3 text-lg font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300">
+                    Start Chatting
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat View (Initially Hidden) -->
+        <div id="chat-view" class="hidden flex-1 flex flex-col p-4 md:p-6">
+            <header class="mb-4 flex justify-between items-center">
+                 <h1 class="text-2xl md:text-3xl font-bold">Public Chat Room</h1>
+                 <div class="text-sm text-gray-500 dark:text-gray-400">
+                    Welcome, <span id="username-display" class="font-bold"></span>
+                 </div>
+            </header>
+            
+            <!-- Messages Container -->
+            <div id="messages-container" class="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-inner space-y-4">
+                <!-- Messages will be dynamically added here -->
+            </div>
+
+            <!-- Message Input Form -->
+            <form id="message-form" class="mt-4">
+                <div class="flex items-center bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-2">
+                    <input id="message-input" type="text" placeholder="Type your message..." autocomplete="off" required class="flex-grow bg-transparent text-lg px-4 py-2 outline-none">
+                    <button type="submit" class="ml-2 px-6 py-3 text-lg font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300">
+                        Send
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // IMPORTANT: This is a sample Firebase configuration. 
+        // For a real application, you would create your own Firebase project
+        // and get your own configuration details.
+        // For this demo, we use pre-configured public settings.
+        const firebaseConfig = {
+            apiKey: "AIzaSyCiMOg6N3kD_Lxb6JUZevNl04i-rDKEs9k",
+            authDomain: "canvas-chat-app-2024.firebaseapp.com",
+            projectId: "canvas-chat-app-2024",
+            storageBucket: "canvas-chat-app-2024.appspot.com",
+            messagingSenderId: "57104882119",
+            appId: "1:57104882119:web:7b3903571fbe6b003f9b57"
+        };
+
+        // Import Firebase services
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // DOM Elements
+        const loginView = document.getElementById('login-view');
+        const chatView = document.getElementById('chat-view');
+        const usernameInput = document.getElementById('username-input');
+        const loginButton = document.getElementById('login-button');
+        const usernameDisplay = document.getElementById('username-display');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+
+        let username = 'nainesh';
+        
+        // --- Login Logic ---
+        loginButton.addEventListener('click', () => {
+            const enteredUsername = usernameInput.value.trim();
+            if (enteredUsername) {
+                username = enteredUsername;
+                usernameDisplay.textContent = username;
+                loginView.classList.add('hidden');
+                chatView.classList.remove('hidden');
+                listenForMessages();
+            }
+        });
+        
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginButton.click();
+            }
+        });
+
+
+        // --- Message Sending Logic ---
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const messageText = messageInput.value.trim();
+            if (messageText) {
+                try {
+                    await addDoc(collection(db, 'messages'), {
+                        text: messageText,
+                        username: username,
+                        timestamp: serverTimestamp()
+                    });
+                    messageInput.value = '';
+                    // The scroll will happen automatically via the listener
+                } catch (error) {
+                    console.error("Error sending message: ", error);
+                }
+            }
+        });
+
+        // --- Message Listening Logic ---
+        function listenForMessages() {
+            const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
+            
+            onSnapshot(q, (querySnapshot) => {
+                messagesContainer.innerHTML = ''; // Clear old messages
+                querySnapshot.forEach((doc) => {
+                    const message = doc.data();
+                    const messageElement = createMessageElement(message);
+                    messagesContainer.appendChild(messageElement);
+                });
+                // Scroll to the bottom to show the latest message
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        }
+
+        // --- UI Helper to create a message bubble ---
+        function createMessageElement(message) {
+            const wrapper = document.createElement('div');
+            const bubble = document.createElement('div');
+            const usernameEl = document.createElement('div');
+            const textEl = document.createElement('div');
+
+            // Style the elements
+            wrapper.classList.add('flex', 'items-start', 'gap-2.5');
+            bubble.classList.add('flex', 'flex-col', 'w-full', 'max-w-[320px]', 'leading-1.5', 'p-4', 'border-gray-200', 'rounded-xl');
+            usernameEl.classList.add('text-sm', 'font-semibold', 'text-gray-900', 'dark:text-white');
+            textEl.classList.add('text-md', 'font-normal', 'py-1', 'text-gray-900', 'dark:text-white');
+
+            usernameEl.textContent = message.username;
+            textEl.textContent = message.text;
+            
+            // Align message left or right
+            if (message.username === username) {
+                wrapper.classList.add('justify-end');
+                bubble.classList.add('bg-blue-600', 'rounded-es-xl', 'dark:bg-blue-700');
+                usernameEl.classList.add('text-white');
+                textEl.classList.add('text-white');
+            } else {
+                bubble.classList.add('bg-gray-200', 'rounded-ss-xl', 'dark:bg-gray-700');
+            }
+
+            bubble.appendChild(usernameEl);
+            bubble.appendChild(textEl);
+            wrapper.appendChild(bubble);
+
+            return wrapper;
+        }
+
+    </script>
+</body>
+</html>
